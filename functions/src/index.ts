@@ -268,7 +268,7 @@ export const getDrawings = onRequest(
         .toArray();
 
       // Transform the drawings to remove MongoDB-specific fields
-      const transformedDrawings = drawings.map(drawing => ({
+      const transformedDrawings = drawings.map((drawing) => ({
         id: drawing._id.toString(),
         username: drawing.username,
         coordinates: drawing.coordinates,
