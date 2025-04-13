@@ -171,3 +171,122 @@ export const getLeaderboard = onRequest(
     }
   },
 );
+
+// Function to save a drawing
+export const saveDrawing = onRequest(
+  {secrets: [MONGODB_ATLAS_URL]},
+  async (req, res) => {
+    let client;
+    try {
+      // Extract data from the request body
+      const {email, username, coordinates, timestamp} = req.body;
+
+      if (!email || typeof email !== "string") {
+        res.status(400).json({
+          error: "Request must include an 'email' parameter of type string",
+        });
+        return;
+      }
+
+      if (!coordinates || !Array.isArray(coordinates)) {
+        res.status(400).json({
+          error: "Request must include a 'coordinates' parameter of type array",
+        });
+        return;
+      }
+
+      // Connect to MongoDB with options
+      const connectionString = MONGODB_ATLAS_URL.value();
+      client = new MongoClient(connectionString, mongoOptions);
+      await client.connect();
+
+      // Get the database and collection
+      const db = client.db("Distances");
+      const collection = db.collection("Drawings");
+
+      // Create a new drawing document
+      const drawing = {
+        email,
+        username: username || "Anonymous",
+        coordinates,
+        createdAt: timestamp || new Date().toISOString(),
+      };
+
+      // Insert the drawing
+      const result = await collection.insertOne(drawing);
+
+      // Return success with the drawing ID
+      res.status(200).json({
+        success: true,
+        message: "Drawing saved successfully",
+        drawingId: result.insertedId,
+      });
+    } catch (error) {
+      console.error("Error saving drawing:", error);
+      res.status(500).json({
+        error: "An error occurred while saving the drawing",
+      });
+    } finally {
+      // Close the MongoDB connection
+      if (client) {
+        await client.close();
+      }
+    }
+  },
+);
+
+// Function to get drawings for a user
+export const getDrawings = onRequest(
+  {secrets: [MONGODB_ATLAS_URL]},
+  async (req, res) => {
+    let client;
+    try {
+      // Extract email from the request query parameters
+      const email = req.query.email as string;
+
+      if (!email) {
+        res.status(400).json({
+          error: "Request must include an 'email' query parameter",
+        });
+        return;
+      }
+
+      // Connect to MongoDB with options
+      const connectionString = MONGODB_ATLAS_URL.value();
+      client = new MongoClient(connectionString, mongoOptions);
+      await client.connect();
+
+      // Get the database and collection
+      const db = client.db("Distances");
+      const collection = db.collection("Drawings");
+
+      // Find all drawings for the user, sorted by creation date (newest first)
+      const drawings = await collection
+        .find({email})
+        .sort({createdAt: -1})
+        .limit(50) // Limit to 50 drawings to prevent excessive data transfer
+        .toArray();
+
+      // Transform the drawings to remove MongoDB-specific fields
+      const transformedDrawings = drawings.map(drawing => ({
+        id: drawing._id.toString(),
+        username: drawing.username,
+        coordinates: drawing.coordinates,
+        createdAt: drawing.createdAt,
+      }));
+
+      // Return the drawings
+      res.status(200).json(transformedDrawings);
+    } catch (error) {
+      console.error("Error getting drawings:", error);
+      res.status(500).json({
+        error: "An error occurred while getting the drawings",
+      });
+    } finally {
+      // Close the MongoDB connection
+      if (client) {
+        await client.close();
+      }
+    }
+  },
+);
