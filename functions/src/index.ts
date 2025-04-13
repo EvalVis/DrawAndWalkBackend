@@ -52,63 +52,6 @@ export const callGemini = onRequest(
   },
 );
 
-// Function to handle MongoDB operations
-export const getDistanceByEmail = onRequest(
-  {secrets: [MONGODB_ATLAS_URL]},
-  async (req, res) => {
-    let client;
-    try {
-      // Extract the email from the request body
-      const {email} = req.body;
-
-      if (!email || typeof email !== "string") {
-        res.status(400).json({
-          error: "Request must include an 'email' parameter of type string",
-        });
-        return;
-      }
-
-      // Connect to MongoDB with options
-      const connectionString = MONGODB_ATLAS_URL.value();
-      console.log(`Connecting to MongoDB with options: ${JSON.stringify(mongoOptions)}`);
-
-      client = new MongoClient(connectionString, mongoOptions);
-      await client.connect();
-
-      // Get the database and collection
-      const db = client.db("Distances");
-      const collection = db.collection("user_distances");
-
-      // Find the distance for the given email
-      const result = await collection.findOne({email});
-
-      if (!result) {
-        res.status(404).json({
-          error: "No distance record found for this email",
-        });
-        return;
-      }
-
-      // Return the distance
-      res.status(200).json({
-        email: result.email,
-        distance: result.distance,
-        lastUpdated: result.lastUpdated,
-      });
-    } catch (error) {
-      console.error("Error accessing MongoDB:", error);
-      res.status(500).json({
-        error: "An error occurred while accessing the database",
-      });
-    } finally {
-      // Close the MongoDB connection
-      if (client) {
-        await client.close();
-      }
-    }
-  },
-);
-
 // Function to update distance
 export const updateDistance = onRequest(
   {secrets: [MONGODB_ATLAS_URL]},
