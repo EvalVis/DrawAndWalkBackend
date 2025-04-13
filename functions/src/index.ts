@@ -84,13 +84,22 @@ export const updateDistance = onRequest(
       const db = client.db("Distances");
       const collection = db.collection("Ink");
 
+      // First, find the existing record for this user
+      const existingRecord = await collection.findOne({email});
+      
+      // Calculate the new total distance
+      const currentDistance = existingRecord!.distance;
+      const newTotalDistance = currentDistance + distance;
+      
+      const username = existingRecord?.username ?? "Anonymous";
       // Update or insert the distance record
       const result = await collection.updateOne(
         {email},
         {
           $set: {
             email,
-            distance,
+            username,
+            distance: newTotalDistance,
             lastUpdated: timestamp || new Date().toISOString(),
           },
         },
@@ -101,6 +110,7 @@ export const updateDistance = onRequest(
       res.status(200).json({
         success: true,
         message: result.upsertedCount > 0 ? "Record created" : "Record updated",
+        totalDistance: newTotalDistance,
       });
     } catch (error) {
       console.error("Error updating distance:", error);
