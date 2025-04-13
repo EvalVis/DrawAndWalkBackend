@@ -1,7 +1,7 @@
 import {onRequest} from "firebase-functions/v2/https";
 import {defineSecret} from "firebase-functions/params";
 import {GoogleGenerativeAI} from "@google/generative-ai";
-import {MongoClient, MongoClientOptions} from "mongodb";
+import {MongoClient, MongoClientOptions, ObjectId, Sort} from "mongodb";
 
 // Define secrets
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
@@ -16,6 +16,17 @@ const mongoOptions: MongoClientOptions = {
   socketTimeoutMS: 30000,
   maxPoolSize: 10,
 };
+
+// Define the document type for drawings
+interface DrawingDocument {
+  _id: ObjectId;
+  email: string;
+  username: string;
+  coordinates: Array<{lat: number; lng: number}>;
+  createdAt: string;
+  votes?: Array<{voterEmail: string; timestamp: string}>;
+  voteCount?: number;
+}
 
 // Function to handle Gemini API calls
 export const callGemini = onRequest(
@@ -210,6 +221,8 @@ export const saveDrawing = onRequest(
         username: username || "Anonymous",
         coordinates,
         createdAt: timestamp || new Date().toISOString(),
+        voteCount: 0, // Initialize vote count
+        votes: [], // Initialize empty votes array
       };
 
       // Insert the drawing
@@ -235,12 +248,29 @@ export const saveDrawing = onRequest(
   },
 );
 
-// Function to get drawings for a user
-export const getDrawings = onRequest(
+// Function to vote for a drawing
+export const voteForDrawing = onRequest(
   {secrets: [MONGODB_ATLAS_URL]},
   async (req, res) => {
     let client;
     try {
+      // Extract data from the request body
+      const {drawingId, voterEmail} = req.body;
+
+      if (!drawingId || typeof drawingId !== "string") {
+        res.status(400).json({
+          error: "Request must include a 'drawingId' parameter of type string",
+        });
+        return;
+      }
+
+      if (!voterEmail || typeof voterEmail !== "string") {
+        res.status(400).json({
+          error: "Request must include a 'voterEmail' parameter of type string",
+        });
+        return;
+      }
+
       // Connect to MongoDB with options
       const connectionString = MONGODB_ATLAS_URL.value();
       client = new MongoClient(connectionString, mongoOptions);
@@ -248,35 +278,117 @@ export const getDrawings = onRequest(
 
       // Get the database and collection
       const db = client.db("Distances");
-      const collection = db.collection("Drawings");
+      const collection = db.collection<DrawingDocument>("Drawings");
 
-      // Find all drawings, sorted by creation date (newest first)
+      // Check if user has already voted for this drawing
+      const drawing = await collection.findOne({
+        "_id": new ObjectId(drawingId),
+        "votes.voterEmail": voterEmail,
+      });
+
+      if (drawing) {
+        res.status(400).json({
+          error: "User has already voted for this drawing",
+        });
+        return;
+      }
+
+      // Add vote to the drawing
+      const result = await collection.updateOne(
+        {"_id": new ObjectId(drawingId)},
+        {
+          "$push": {
+            votes: {
+              voterEmail,
+              timestamp: new Date().toISOString(),
+            },
+          },
+          "$inc": {voteCount: 1},
+        }
+      );
+
+      if (result.modifiedCount === 0) {
+        res.status(404).json({
+          error: "Drawing not found",
+        });
+        return;
+      }
+
+      // Return success
+      res.status(200).json({
+        success: true,
+        message: "Vote recorded successfully",
+      });
+    } catch (error) {
+      console.error("Error voting for drawing:", error);
+      res.status(500).json({
+        error: "An error occurred while voting for the drawing",
+      });
+    } finally {
+      if (client) {
+        await client.close();
+      }
+    }
+  }
+);
+
+// Function to get drawings sorted by votes or date
+export const getDrawingsSorted = onRequest(
+  {secrets: [MONGODB_ATLAS_URL]},
+  async (req, res) => {
+    let client;
+    try {
+      // Extract sort parameter from query
+      const {sortBy} = req.query;
+
+      if (!sortBy || (sortBy !== "votes" && sortBy !== "date")) {
+        res.status(400).json({
+          error: "Query must include a 'sortBy' parameter with value 'votes' or 'date'",
+        });
+        return;
+      }
+
+      // Connect to MongoDB with options
+      const connectionString = MONGODB_ATLAS_URL.value();
+      client = new MongoClient(connectionString, mongoOptions);
+      await client.connect();
+
+      // Get the database and collection
+      const db = client.db("Distances");
+      const collection = db.collection<DrawingDocument>("Drawings");
+
+      // Define sort options
+      const sortOptions: Sort = sortBy === "votes" ?
+        {voteCount: -1, createdAt: -1} :
+        {createdAt: -1};
+
+      // Find all drawings with the specified sort
       const drawings = await collection
         .find({})
-        .sort({createdAt: -1})
-        .limit(100) // Limit to 100 drawings to prevent excessive data transfer
+        .sort(sortOptions)
+        .limit(100)
         .toArray();
 
-      // Transform the drawings to remove MongoDB-specific fields
+      // Transform the drawings to include vote count and remove sensitive data
       const transformedDrawings = drawings.map((drawing) => ({
         id: drawing._id.toString(),
         username: drawing.username,
         coordinates: drawing.coordinates,
         createdAt: drawing.createdAt,
+        voteCount: drawing.voteCount || 0,
       }));
 
       // Return the drawings
       res.status(200).json(transformedDrawings);
     } catch (error) {
-      console.error("Error getting drawings:", error);
+      console.error("Error getting sorted drawings:", error);
       res.status(500).json({
         error: "An error occurred while getting the drawings",
       });
     } finally {
-      // Close the MongoDB connection
       if (client) {
         await client.close();
       }
     }
-  },
+  }
 );
