@@ -241,16 +241,6 @@ export const getDrawings = onRequest(
   async (req, res) => {
     let client;
     try {
-      // Extract email from the request query parameters
-      const email = req.query.email as string;
-
-      if (!email) {
-        res.status(400).json({
-          error: "Request must include an 'email' query parameter",
-        });
-        return;
-      }
-
       // Connect to MongoDB with options
       const connectionString = MONGODB_ATLAS_URL.value();
       client = new MongoClient(connectionString, mongoOptions);
@@ -260,11 +250,11 @@ export const getDrawings = onRequest(
       const db = client.db("Distances");
       const collection = db.collection("Drawings");
 
-      // Find all drawings for the user, sorted by creation date (newest first)
+      // Find all drawings, sorted by creation date (newest first)
       const drawings = await collection
-        .find({email})
+        .find({})
         .sort({createdAt: -1})
-        .limit(50) // Limit to 50 drawings to prevent excessive data transfer
+        .limit(100) // Limit to 100 drawings to prevent excessive data transfer
         .toArray();
 
       // Transform the drawings to remove MongoDB-specific fields
