@@ -59,7 +59,7 @@ export const updateDistance = onRequest(
     let client;
     try {
       // Extract data from the request body
-      const {email, distance, timestamp} = req.body;
+      const {email, username, distance, timestamp} = req.body;
 
       if (!email || typeof email !== "string") {
         res.status(400).json({
@@ -86,19 +86,21 @@ export const updateDistance = onRequest(
 
       // First, find the existing record for this user
       const existingRecord = await collection.findOne({email});
-      
+
       // Calculate the new total distance
-      const currentDistance = existingRecord!.distance;
+      const currentDistance = existingRecord?.distance ?? 0;
       const newTotalDistance = currentDistance + distance;
-      
-      const username = existingRecord?.username ?? "Anonymous";
+
+      // Use the username from the request, or fallback to existing username or "Anonymous"
+      const displayUsername = username || existingRecord?.username || "Anonymous";
+
       // Update or insert the distance record
       const result = await collection.updateOne(
         {email},
         {
           $set: {
             email,
-            username,
+            username: displayUsername,
             distance: newTotalDistance,
             lastUpdated: timestamp || new Date().toISOString(),
           },
