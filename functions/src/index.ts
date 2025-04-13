@@ -195,12 +195,18 @@ export const getLeaderboard = onRequest(
         .limit(100)
         .toArray();
 
-      // Return the leaderboard
-      res.status(200).json(results);
+      // Transform results to only include username and distance
+      const privacySafeResults = results.map((result) => ({
+        username: result.username,
+        distance: result.distance,
+      }));
+
+      // Return the leaderboard with privacy protection
+      res.status(200).json(privacySafeResults);
     } catch (error) {
       console.error("Error getting leaderboard:", error);
       res.status(500).json({
-        error: error,
+        error: "An error occurred while getting the leaderboard",
       });
     } finally {
       // Close the MongoDB connection
