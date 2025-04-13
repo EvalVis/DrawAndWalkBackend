@@ -1,29 +1,59 @@
-# Firebase Functions for Walk and Draw App
+# Walk and Draw - Firebase Cloud Functions
 
-This directory contains Firebase Functions for the Walk and Draw app, including a function to handle Gemini API calls.
+This directory contains the Firebase Cloud Functions that power the backend of the Walk and Draw application.
 
-## Setup
+## Features
 
-1. Install dependencies:
-   ```
-   npm install
-   ```
+- **AI-Powered Drawing Suggestions**: Uses Google's Gemini AI to generate creative drawing ideas
+- **Drawing Storage**: Saves user drawings to MongoDB Atlas
+- **Leaderboard Management**: Tracks and ranks users based on distance walked
+- **User Authentication**: Integrates with Auth0 for secure user management
 
-2. Set up the Gemini API key as a secret in Firebase:
-   ```
-   firebase functions:secrets:set GEMINI_API_KEY
-   ```
-   When prompted, enter your Gemini API key.
+## Project Structure
 
-3. Build the functions:
-   ```
-   npm run build
-   ```
+- `functions/`: Contains the Firebase Cloud Functions code
+  - `src/index.ts`: Main source code with all function implementations
+  - `package.json`: Dependencies and scripts
+  - `tsconfig.json`: TypeScript configuration
 
-4. Deploy the functions:
-   ```
-   npm run deploy
-   ```
+## Dependencies
+
+- **firebase-admin**: Firebase Admin SDK
+- **firebase-functions**: Firebase Functions framework
+- **@google/generative-ai**: Google's Generative AI SDK for Gemini
+- **mongodb**: MongoDB Node.js driver
+
+## Licensing
+
+This project is released under the [GNU General Public License v3.0](LICENSE) (GPL-3.0).
+
+### Open Source Components
+
+The code in this directory is released under the GPL-3.0, which allows you to freely use, modify, and distribute the code, provided that any derivative works are also released under the same license.
+
+### Proprietary API Usage
+
+These cloud functions interact with several proprietary APIs:
+
+- **Google Gemini API**: Used for AI-powered drawing suggestions
+- **MongoDB Atlas**: Used for data storage
+- **Firebase**: Used as the hosting platform
+
+Please setup API keys for these APIs.
+
+## Getting Started
+
+1. Install Firebase CLI: `npm install -g firebase-tools`
+2. Login to Firebase: `firebase login`
+3. Install dependencies: `cd functions && npm install`
+4. Set up environment variables:
+   - GEMINI_API_KEY: Your Google Gemini API key
+   - MONGODB_ATLAS_URL: Your MongoDB Atlas connection string
+5. Deploy to Firebase: `firebase deploy --only functions`
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
 
 ## Available Functions
 
