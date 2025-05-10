@@ -31,5 +31,6 @@ module.exports = {
     "indent": ["error", 2],
     "max-len": ["error", {"code": 100}],
     "no-trailing-spaces": "error",
+    "linebreak-style": ["error", "windows"],
   },
 };
