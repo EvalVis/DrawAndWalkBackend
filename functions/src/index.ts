@@ -26,6 +26,8 @@ interface DrawingDocument {
   createdAt: string;
   votes?: Array<{voterEmail: string; timestamp: string}>;
   voteCount?: number;
+  isPublic: boolean;
+  teamIds?: string[];
 }
 
 // Interface for Team documents
@@ -34,6 +36,7 @@ interface TeamDocument {
   teamName: string;
   creatorEmail: string;
   createdAt: string;
+  drawingIds?: string[];
 }
 
 // Function to handle Gemini API calls
@@ -198,7 +201,7 @@ export const saveDrawing = onRequest(
     let client;
     try {
       // Extract data from the request body
-      const {email, username, coordinates, timestamp} = req.body;
+      const {email, username, coordinates, timestamp, isPublic, teamIds} = req.body;
 
       if (!email || typeof email !== "string") {
         res.status(400).json({
@@ -221,7 +224,7 @@ export const saveDrawing = onRequest(
 
       // Get the database and collection
       const db = client.db("Distances");
-      const collection = db.collection("Drawings");
+      const drawingsCollection = db.collection("Drawings");
 
       // Create a new drawing document
       const drawing = {
@@ -231,16 +234,36 @@ export const saveDrawing = onRequest(
         createdAt: timestamp || new Date().toISOString(),
         voteCount: 0, // Initialize vote count
         votes: [], // Initialize empty votes array
+        isPublic: isPublic === true, // Default to false if not provided
+        teamIds: Array.isArray(teamIds) ? teamIds : [], // Ensure it's an array
       };
 
       // Insert the drawing
-      const result = await collection.insertOne(drawing);
+      const result = await drawingsCollection.insertOne(drawing);
+      const drawingId = result.insertedId.toString();
+
+      // If teams are specified, update each team with this drawing ID
+      if (Array.isArray(teamIds) && teamIds.length > 0) {
+        const teamsCollection = db.collection("Teams");
+
+        // Add this drawing to each team's drawingIds array
+        await Promise.all(teamIds.map(async (teamId) => {
+          try {
+            await teamsCollection.updateOne(
+              {_id: new ObjectId(teamId as string)},
+              {$addToSet: {drawingIds: drawingId}}
+            );
+          } catch (error) {
+            console.error(`Error updating team ${teamId} with drawing:`, error);
+          }
+        }));
+      }
 
       // Return success with the drawing ID
       res.status(200).json({
         success: true,
         message: "Drawing saved successfully",
-        drawingId: result.insertedId,
+        drawingId: drawingId,
       });
     } catch (error) {
       console.error("Error saving drawing:", error);
@@ -370,9 +393,9 @@ export const getDrawingsSorted = onRequest(
         {voteCount: -1, createdAt: -1} :
         {createdAt: -1};
 
-      // Find all drawings with the specified sort
+      // Find only public drawings with the specified sort
       const drawings = await collection
-        .find({})
+        .find({isPublic: true})
         .sort(sortOptions)
         .limit(100)
         .toArray();
@@ -493,6 +516,87 @@ export const getTeams = onRequest(
       console.error("Error getting teams:", error);
       res.status(500).json({
         error: "An error occurred while getting the teams",
+      });
+    } finally {
+      if (client) {
+        await client.close();
+      }
+    }
+  }
+);
+
+// Function to get drawings for a specific team
+export const getTeamDrawings = onRequest(
+  {secrets: [MONGODB_ATLAS_URL]},
+  async (req, res) => {
+    let client;
+    try {
+      // Extract query parameters
+      const {teamId} = req.query;
+
+      if (!teamId || typeof teamId !== "string") {
+        res.status(400).json({
+          error: "Request must include a 'teamId' parameter of type string",
+        });
+        return;
+      }
+
+      // Connect to MongoDB with options
+      const connectionString = MONGODB_ATLAS_URL.value();
+      client = new MongoClient(connectionString, mongoOptions);
+      await client.connect();
+
+      // Get the database and collections
+      const db = client.db("Distances");
+      const teamsCollection = db.collection<TeamDocument>("Teams");
+      const drawingsCollection = db.collection<DrawingDocument>("Drawings");
+
+      // First, verify the user is a member of this team (for now, just check if they created it)
+      const team = await teamsCollection.findOne({
+        _id: new ObjectId(teamId),
+      });
+
+      if (!team) {
+        res.status(403).json({
+          error: "User is not a member of this team or team does not exist",
+        });
+        return;
+      }
+
+      // Get the team's drawing IDs
+      const drawingIds = team.drawingIds || [];
+
+      // If the team has no drawings yet
+      if (drawingIds.length === 0) {
+        res.status(200).json([]);
+        return;
+      }
+
+      // Convert string IDs to ObjectIds
+      const objectIds = drawingIds.map((id) => new ObjectId(id));
+
+      // Find all drawings that belong to this team
+      const drawings = await drawingsCollection
+        .find({_id: {$in: objectIds}})
+        .sort({createdAt: -1})
+        .toArray();
+
+      // Transform the drawings to include vote count and remove sensitive data
+      const transformedDrawings = drawings.map((drawing) => ({
+        id: drawing._id.toString(),
+        username: drawing.username,
+        coordinates: drawing.coordinates,
+        createdAt: drawing.createdAt,
+        voteCount: drawing.voteCount || 0,
+        isPublic: drawing.isPublic,
+      }));
+
+      // Return the drawings
+      res.status(200).json(transformedDrawings);
+    } catch (error) {
+      console.error("Error getting team drawings:", error);
+      res.status(500).json({
+        error: "An error occurred while getting the team drawings",
       });
     } finally {
       if (client) {
