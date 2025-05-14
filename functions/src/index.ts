@@ -28,6 +28,14 @@ interface DrawingDocument {
   voteCount?: number;
 }
 
+// Interface for Team documents
+interface TeamDocument {
+  _id: ObjectId;
+  teamName: string;
+  creatorEmail: string;
+  createdAt: string;
+}
+
 // Function to handle Gemini API calls
 export const callGemini = onRequest(
   {secrets: [GEMINI_API_KEY]},
@@ -384,6 +392,107 @@ export const getDrawingsSorted = onRequest(
       console.error("Error getting sorted drawings:", error);
       res.status(500).json({
         error: "An error occurred while getting the drawings",
+      });
+    } finally {
+      if (client) {
+        await client.close();
+      }
+    }
+  }
+);
+
+// Function to create a team
+export const createTeam = onRequest(
+  {secrets: [MONGODB_ATLAS_URL]},
+  async (req, res) => {
+    let client;
+    try {
+      const {teamName, email} = req.body;
+
+      if (!teamName || typeof teamName !== "string") {
+        res.status(400).json({
+          error: "Request must include a 'teamName' parameter of type string",
+        });
+        return;
+      }
+
+      if (!email || typeof email !== "string") {
+        res.status(400).json({
+          error: "Request must include an 'email' parameter of type string",
+        });
+        return;
+      }
+
+      const connectionString = MONGODB_ATLAS_URL.value();
+      client = new MongoClient(connectionString, mongoOptions);
+      await client.connect();
+
+      const db = client.db("Distances");
+      const collection = db.collection("Teams");
+
+      const team = {
+        teamName,
+        creatorEmail: email,
+        createdAt: new Date().toISOString(),
+      };
+
+      const result = await collection.insertOne(team);
+
+      res.status(200).json({
+        success: true,
+        message: "Team created successfully",
+        teamId: result.insertedId,
+      });
+    } catch (error) {
+      console.error("Error creating team:", error);
+      res.status(500).json({
+        error: "An error occurred while creating the team",
+      });
+    } finally {
+      if (client) {
+        await client.close();
+      }
+    }
+  }
+);
+
+export const getTeams = onRequest(
+  {secrets: [MONGODB_ATLAS_URL]},
+  async (req, res) => {
+    let client;
+    try {
+      const {email} = req.query;
+
+      if (!email || typeof email !== "string") {
+        res.status(400).json({
+          error: "Request must include an 'email' parameter of type string",
+        });
+        return;
+      }
+
+      const connectionString = MONGODB_ATLAS_URL.value();
+      client = new MongoClient(connectionString, mongoOptions);
+      await client.connect();
+
+      const db = client.db("Distances");
+      const collection = db.collection<TeamDocument>("Teams");
+
+      const teams = await collection
+        .find({creatorEmail: email})
+        .sort({createdAt: -1})
+        .map((team) => ({
+          id: team._id.toString(),
+          teamName: team.teamName,
+          creatorEmail: team.creatorEmail,
+          createdAt: team.createdAt,
+        }))
+        .toArray();
+
+      res.status(200).json(teams);
+    } catch (error) {
+      console.error("Error getting teams:", error);
+      res.status(500).json({
+        error: "An error occurred while getting the teams",
       });
     } finally {
       if (client) {
